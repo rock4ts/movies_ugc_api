@@ -1,0 +1,1 @@
+"""UGC API application package."""
