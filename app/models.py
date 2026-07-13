@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -13,19 +13,88 @@ class EventType(str, Enum):
 
     CLICK = "click"
     PAGE_VIEW = "page_view"
-    VIDEO_QUALITY_CHANGED = "video_quality_changed"
-    VIDEO_COMPLETED = "video_completed"
+    MOVIE_QUALITY_CHANGED = "movie_quality_changed"
+    MOVIE_COMPLETED = "movie_completed"
     SEARCH_FILTER_USED = "search_filter_used"
 
 
-class UserEvent(BaseModel):
-    """Generic envelope for incoming user activity events."""
+class EventPayload(BaseModel):
+    """Base schema for a discriminated event payload variant."""
+
+
+class BaseUserEvent(BaseModel):
+    """Common envelope for incoming user activity events."""
 
     event_id: UUID = Field(..., description="Unique event identifier.")
-    event_type: EventType = Field(..., description="Type of the user event.")
     user_id: UUID = Field(..., description="Unique user identifier.")
     timestamp: datetime = Field(..., description="Event timestamp in ISO-8601 format.")
-    payload: dict[str, Any] = Field(..., description="Event-specific payload without strict schema.")
+
+
+class ClickPayload(EventPayload):
+    """Payload for a user click on an interface element."""
+
+    event_type: Literal[EventType.CLICK] = Field(
+        ...,
+        description="Discriminator value identifying a click event.",
+    )
+    element_id: str = Field(..., description="Identifier of the clicked interface element.")
+    element_type: str = Field(..., description="Type of the clicked interface element.")
+
+
+class PageViewPayload(EventPayload):
+    """Payload for a page or application screen view."""
+
+    event_type: Literal[EventType.PAGE_VIEW] = Field(
+        ...,
+        description="Discriminator value identifying a page view event.",
+    )
+    page: str = Field(..., description="URL or identifier of the viewed page or screen.")
+
+
+class MovieQualityChangedPayload(EventPayload):
+    """Payload for a user-selected movie playback quality change."""
+
+    event_type: Literal[EventType.MOVIE_QUALITY_CHANGED] = Field(
+        ...,
+        description="Discriminator value identifying a movie quality change event.",
+    )
+    movie_id: UUID = Field(..., description="Identifier of the movie being played.")
+    previous_quality: str = Field(..., description="Quality before the change.")
+    new_quality: str = Field(..., description="Quality selected by the user.")
+
+
+class MovieCompletedPayload(EventPayload):
+    """Payload for a movie watched by the user until completion."""
+
+    event_type: Literal[EventType.MOVIE_COMPLETED] = Field(
+        ...,
+        description="Discriminator value identifying a movie completion event.",
+    )
+    movie_id: UUID = Field(..., description="Identifier of the completed movie.")
+
+
+class SearchFilterUsedPayload(EventPayload):
+    """Payload for filters applied by a user while searching for films."""
+
+    event_type: Literal[EventType.SEARCH_FILTER_USED] = Field(
+        ...,
+        description="Discriminator value identifying a search filter usage event.",
+    )
+    filters: dict[str, Any] = Field(..., description="Applied filters grouped by filter name.")
+
+
+class UserEvent(BaseUserEvent):
+    payload: (
+        ClickPayload
+        | PageViewPayload
+        | MovieQualityChangedPayload
+        | MovieCompletedPayload
+        | SearchFilterUsedPayload
+    ) = Field(
+        ...,
+        description="Event-specific payload content; shape depends on event_type.",
+        discriminator="event_type",
+    )
 
 
 class EventAcceptedResponse(BaseModel):
