@@ -131,7 +131,7 @@ Other claims (`role`, `access_labels`, `is_superuser`) are present in the token 
 - Pydantic v2 for request/response schemas
 - [confluent-kafka](https://github.com/confluentinc/confluent-kafka-python) producer (librdkafka)
 - RS256 JWT verification (`PyJWT`, PEM public key from auth API)
-- Gunicorn (production), or Flask dev server locally
+- Gunicorn with 4 sync workers (Docker/production), or Flask dev server locally
 - orjson for fast Kafka message serialization
 
 ## Project layout
@@ -181,6 +181,7 @@ In production, mount the auth service public key and point `PUBLIC_KEY_PATH` at 
 5. Or build and run with Docker:
    - `docker build -t ugc-api .`
    - `docker run --env-file .env -p 8000:8000 -v /path/to/jwt-public.pem:/opt/ugc_api/auth-certs/jwt-public.pem:ro ugc-api`
+   - The image starts Gunicorn with 4 sync workers on port `8000`
 
 Send a test event (replace `<token>` with a valid access JWT and align `user_id` with the token `sub`):
 
@@ -267,7 +268,7 @@ tests/functional/
     ├── test_events.py       # happy-path ingestion for all event types
     ├── test_anonymous_events.py
     ├── test_auth.py         # JWT authentication and user_id binding
-    ├── test_validation.py   # invalid payload and malformed JSON rejection
+    ├── test_validation.py         # invalid payload and malformed JSON rejection
     └── test_anonymous_validation.py
 ```
 
@@ -292,8 +293,6 @@ tests/functional/
 - malformed JSON bodies
 
 **Anonymous validation** (`test_anonymous_validation.py`) — verifies anonymous ingestion rejects invalid `anonymous_id`, malformed envelope fields, unsupported payloads, and malformed JSON.
-
-**Topic isolation** (`test_topic_isolation.py`) — verifies authenticated events are only published to `ugc-events-test` and anonymous events are only published to `ugc-anonymous-events-test`.
 
 ### Test environment variables
 
