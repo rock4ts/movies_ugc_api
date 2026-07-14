@@ -6,7 +6,7 @@ import orjson
 from confluent_kafka import KafkaError, KafkaException, Message, Producer
 
 from app.config import KafkaSettings
-from app.models import UserEvent
+from app.models import AnonymousEvent, UserEvent
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +21,7 @@ class KafkaProducerService:
     def __init__(self, settings: KafkaSettings) -> None:
         """Initialize a producer with runtime settings."""
         self._topic: str = settings.topic
+        self._anonymous_topic: str = settings.anonymous_topic
         config: dict[str, str | bool | int] = {
             "bootstrap.servers": settings.bootstrap_servers,
             "acks": settings.acks,
@@ -32,12 +33,24 @@ class KafkaProducerService:
 
     def publish(self, event: UserEvent) -> None:
         """Queue a single event for asynchronous Kafka delivery."""
-        message_value = orjson.dumps(event.model_dump(mode="json"))
+        self._publish(topic=self._topic, key=str(event.user_id), event_payload=event.model_dump(mode="json"))
+
+    def publish_anonymous(self, event: AnonymousEvent) -> None:
+        """Queue a single anonymous event for asynchronous Kafka delivery."""
+        self._publish(
+            topic=self._anonymous_topic,
+            key=str(event.anonymous_id),
+            event_payload=event.model_dump(mode="json"),
+        )
+
+    def _publish(self, topic: str, key: str, event_payload: dict[str, object]) -> None:
+        """Queue a serialized event payload for asynchronous Kafka delivery."""
+        message_value = orjson.dumps(event_payload)
 
         try:
             self._producer.produce(
-                topic=self._topic,
-                key=str(event.user_id),
+                topic=topic,
+                key=key,
                 value=message_value,
                 on_delivery=self._delivery_callback,
             )

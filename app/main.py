@@ -49,7 +49,11 @@ def create_app() -> OpenAPI:
 
     LOGGER.info(
         "Application started.",
-        extra={"flask_env": app_settings.flask_env, "kafka_topic": kafka_settings.topic},
+        extra={
+            "flask_env": app_settings.flask_env,
+            "kafka_topic": kafka_settings.topic,
+            "kafka_anonymous_topic": kafka_settings.anonymous_topic,
+        },
     )
     return app
 

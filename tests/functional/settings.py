@@ -10,6 +10,9 @@ class FunctionalTestSettings:
 
     kafka_bootstrap_servers: str = os.getenv("UGC_TEST_KAFKA_BOOTSTRAP", "localhost:29093")
     kafka_topic: str = os.getenv("UGC_TEST_KAFKA_TOPIC", "ugc-events-test")
+    kafka_anonymous_topic: str = os.getenv(
+        "UGC_TEST_KAFKA_ANONYMOUS_TOPIC", "ugc-anonymous-events-test"
+    )
     kafka_poll_timeout_seconds: float = float(os.getenv("UGC_TEST_KAFKA_POLL_TIMEOUT", "1"))
     kafka_wait_timeout_seconds: float = float(os.getenv("UGC_TEST_KAFKA_WAIT_TIMEOUT", "15"))
 

@@ -38,6 +38,14 @@ def _base_event(user_id: str | None = None) -> dict[str, Any]:
     }
 
 
+def _base_anonymous_event(anonymous_id: str | None = None) -> dict[str, Any]:
+    return {
+        "event_id": str(uuid.uuid4()),
+        "anonymous_id": anonymous_id or str(uuid.uuid4()),
+        "timestamp": datetime.now(tz=UTC).isoformat(),
+    }
+
+
 def make_click_event(user_id: str | None = None) -> dict[str, Any]:
     return {
         **_base_event(user_id),
@@ -49,9 +57,30 @@ def make_click_event(user_id: str | None = None) -> dict[str, Any]:
     }
 
 
+def make_anonymous_click_event(anonymous_id: str | None = None) -> dict[str, Any]:
+    return {
+        **_base_anonymous_event(anonymous_id),
+        "payload": {
+            "event_type": "click",
+            "element_id": "btn_watch",
+            "element_type": "button",
+        },
+    }
+
+
 def make_page_view_event(user_id: str | None = None) -> dict[str, Any]:
     return {
         **_base_event(user_id),
+        "payload": {
+            "event_type": "page_view",
+            "page": "/movies/42",
+        },
+    }
+
+
+def make_anonymous_page_view_event(anonymous_id: str | None = None) -> dict[str, Any]:
+    return {
+        **_base_anonymous_event(anonymous_id),
         "payload": {
             "event_type": "page_view",
             "page": "/movies/42",
@@ -71,9 +100,31 @@ def make_movie_quality_changed_event(user_id: str | None = None) -> dict[str, An
     }
 
 
+def make_anonymous_movie_quality_changed_event(anonymous_id: str | None = None) -> dict[str, Any]:
+    return {
+        **_base_anonymous_event(anonymous_id),
+        "payload": {
+            "event_type": "movie_quality_changed",
+            "movie_id": str(uuid.uuid4()),
+            "previous_quality": "720p",
+            "new_quality": "1080p",
+        },
+    }
+
+
 def make_movie_completed_event(user_id: str | None = None) -> dict[str, Any]:
     return {
         **_base_event(user_id),
+        "payload": {
+            "event_type": "movie_completed",
+            "movie_id": str(uuid.uuid4()),
+        },
+    }
+
+
+def make_anonymous_movie_completed_event(anonymous_id: str | None = None) -> dict[str, Any]:
+    return {
+        **_base_anonymous_event(anonymous_id),
         "payload": {
             "event_type": "movie_completed",
             "movie_id": str(uuid.uuid4()),
@@ -89,6 +140,81 @@ def make_search_filter_used_event(user_id: str | None = None) -> dict[str, Any]:
             "filters": {"genre": "drama", "year_from": 2010, "rating_gte": 7.5},
         },
     }
+
+
+def make_anonymous_search_filter_used_event(anonymous_id: str | None = None) -> dict[str, Any]:
+    return {
+        **_base_anonymous_event(anonymous_id),
+        "payload": {
+            "event_type": "search_filter_used",
+            "filters": {"genre": "drama", "year_from": 2010, "rating_gte": 7.5},
+        },
+    }
+
+
+def _consumer_for_topic(topic: str) -> Consumer:
+    consumer = Consumer(
+        {
+            "bootstrap.servers": test_settings.kafka_bootstrap_servers,
+            "group.id": f"ugc-api-functional-{topic}-{uuid.uuid4().hex}",
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+        }
+    )
+    consumer.subscribe([topic])
+    return consumer
+
+
+def _clear_topic(admin: AdminClient, topic: str) -> None:
+    metadata = admin.list_topics(topic=topic, timeout=10)
+    topic_metadata = metadata.topics.get(topic)
+    if topic_metadata is None:
+        return
+
+    partitions_to_clear = [
+        TopicPartition(topic, partition_id, OFFSET_END)
+        for partition_id in topic_metadata.partitions
+    ]
+    if not partitions_to_clear:
+        return
+
+    futures = admin.delete_records(partitions_to_clear, operation_timeout=30.0)
+    for future in futures.values():
+        future.result()
+
+
+def _find_kafka_event_by_id(
+    consumer: Consumer, event_id: str, wait_timeout_seconds: float
+) -> dict[str, Any] | None:
+    deadline = time.monotonic() + wait_timeout_seconds
+    while time.monotonic() < deadline:
+        message = consumer.poll(test_settings.kafka_poll_timeout_seconds)
+        if message is None:
+            continue
+
+        if message.error() is not None:
+            if message.error().code() == KafkaError._PARTITION_EOF:
+                continue
+            raise AssertionError(f"Kafka poll failed: {message.error()}")
+
+        value_raw = message.value()
+        if value_raw is None:
+            continue
+
+        payload = orjson.loads(value_raw)
+        if payload.get("event_id") != event_id:
+            continue
+
+        key_raw = message.key()
+        key = key_raw.decode("utf-8") if key_raw is not None else None
+        return {
+            "key": key,
+            "value": payload,
+            "topic": message.topic(),
+            "partition": message.partition(),
+            "offset": message.offset(),
+        }
+    return None
 
 
 @pytest.fixture(scope="function")
@@ -153,6 +279,23 @@ def event_factory() -> Callable[[str, str | None], dict[str, Any]]:
     return build
 
 
+@pytest.fixture(scope="function")
+def anonymous_event_factory() -> Callable[[str, str | None], dict[str, Any]]:
+    event_builders: dict[str, Callable[[str | None], dict[str, Any]]] = {
+        "click": make_anonymous_click_event,
+        "page_view": make_anonymous_page_view_event,
+        "movie_quality_changed": make_anonymous_movie_quality_changed_event,
+        "movie_completed": make_anonymous_movie_completed_event,
+        "search_filter_used": make_anonymous_search_filter_used_event,
+    }
+
+    def build(event_type: str, anonymous_id: str | None = None) -> dict[str, Any]:
+        builder = event_builders[event_type]
+        return builder(anonymous_id)
+
+    return build
+
+
 @pytest.fixture(scope="session")
 def make_access_token() -> Callable[..., str]:
     private_key_path = Path(jwt_test_settings.private_key_path)
@@ -208,77 +351,57 @@ def authenticated_event(
     return inner
 
 
-@pytest.fixture(scope="session", autouse=True)
-def clear_kafka_topic() -> None:
-    admin = AdminClient({"bootstrap.servers": test_settings.kafka_bootstrap_servers})
-    metadata = admin.list_topics(topic=test_settings.kafka_topic, timeout=10)
-    topic_metadata = metadata.topics.get(test_settings.kafka_topic)
-    if topic_metadata is None:
-        return
-
-    partitions_to_clear = [
-        TopicPartition(test_settings.kafka_topic, partition_id, OFFSET_END)
-        for partition_id in topic_metadata.partitions
-    ]
-    if not partitions_to_clear:
-        return
-
-    futures = admin.delete_records(partitions_to_clear, operation_timeout=30.0)
-    for future in futures.values():
-        future.result()
+@pytest.fixture(scope="session")
+def kafka_consumer() -> Generator[Consumer, None, None]:
+    consumer = _consumer_for_topic(test_settings.kafka_topic)
+    yield consumer
+    consumer.close()
 
 
 @pytest.fixture(scope="session")
-def kafka_consumer() -> Generator[Consumer, None, None]:
-    consumer = Consumer(
-        {
-            "bootstrap.servers": test_settings.kafka_bootstrap_servers,
-            "group.id": f"ugc-api-functional-{uuid.uuid4().hex}",
-            "auto.offset.reset": "earliest",
-            "enable.auto.commit": False,
-        }
-    )
-    consumer.subscribe([test_settings.kafka_topic])
+def anonymous_kafka_consumer() -> Generator[Consumer, None, None]:
+    consumer = _consumer_for_topic(test_settings.kafka_anonymous_topic)
     yield consumer
     consumer.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def clear_kafka_topic() -> None:
+    admin = AdminClient({"bootstrap.servers": test_settings.kafka_bootstrap_servers})
+    _clear_topic(admin, test_settings.kafka_topic)
+    _clear_topic(admin, test_settings.kafka_anonymous_topic)
 
 
 @pytest.fixture(scope="function")
 def consume_kafka_event_by_id(kafka_consumer: Consumer) -> Callable[[str], dict[str, Any]]:
     def inner(event_id: str) -> dict[str, Any]:
-        deadline = time.monotonic() + test_settings.kafka_wait_timeout_seconds
-        while time.monotonic() < deadline:
-            message = kafka_consumer.poll(test_settings.kafka_poll_timeout_seconds)
-            if message is None:
-                continue
-
-            if message.error() is not None:
-                if message.error().code() == KafkaError._PARTITION_EOF:
-                    continue
-                raise AssertionError(f"Kafka poll failed: {message.error()}")
-
-            value_raw = message.value()
-            if value_raw is None:
-                continue
-
-            payload = orjson.loads(value_raw)
-            if payload.get("event_id") != event_id:
-                continue
-
-            key_raw = message.key()
-            key = key_raw.decode("utf-8") if key_raw is not None else None
-            return {
-                "key": key,
-                "value": payload,
-                "topic": message.topic(),
-                "partition": message.partition(),
-                "offset": message.offset(),
-            }
-
-        raise AssertionError(
-            f"Kafka message with event_id={event_id} was not received in "
-            f"{test_settings.kafka_wait_timeout_seconds} seconds."
+        consumed_message = _find_kafka_event_by_id(
+            kafka_consumer, event_id, test_settings.kafka_wait_timeout_seconds
         )
+        if consumed_message is None:
+            raise AssertionError(
+                f"Kafka message with event_id={event_id} was not received in "
+                f"{test_settings.kafka_wait_timeout_seconds} seconds."
+            )
+        return consumed_message
+
+    return inner
+
+
+@pytest.fixture(scope="function")
+def consume_anonymous_kafka_event_by_id(
+    anonymous_kafka_consumer: Consumer,
+) -> Callable[[str], dict[str, Any]]:
+    def inner(event_id: str) -> dict[str, Any]:
+        consumed_message = _find_kafka_event_by_id(
+            anonymous_kafka_consumer, event_id, test_settings.kafka_wait_timeout_seconds
+        )
+        if consumed_message is None:
+            raise AssertionError(
+                f"Kafka anonymous message with event_id={event_id} was not received in "
+                f"{test_settings.kafka_wait_timeout_seconds} seconds."
+            )
+        return consumed_message
 
     return inner
 
@@ -300,6 +423,28 @@ def post_event_and_consume(
     ) -> tuple[dict[str, Any] | list[Any] | str, int, dict[str, Any]]:
         body, status, _ = make_post_request("/events", event_payload, headers)
         consumed_message = consume_kafka_event_by_id(event_payload["event_id"])
+        return body, status, consumed_message
+
+    return inner
+
+
+@pytest.fixture(scope="function")
+def post_anonymous_event_and_consume(
+    make_post_request: Callable[
+        [str, dict[str, Any] | None, dict[str, str] | None],
+        tuple[dict[str, Any] | list[Any] | str, int, httpx.Response],
+    ],
+    consume_anonymous_kafka_event_by_id: Callable[[str], dict[str, Any]],
+) -> Callable[
+    [dict[str, Any], dict[str, str] | None],
+    tuple[dict[str, Any] | list[Any] | str, int, dict[str, Any]],
+]:
+    def inner(
+        event_payload: dict[str, Any],
+        headers: dict[str, str] | None = None,
+    ) -> tuple[dict[str, Any] | list[Any] | str, int, dict[str, Any]]:
+        body, status, _ = make_post_request("/anonymous-events", event_payload, headers)
+        consumed_message = consume_anonymous_kafka_event_by_id(event_payload["event_id"])
         return body, status, consumed_message
 
     return inner

@@ -33,6 +33,7 @@ class KafkaSettings(BaseSettings):
 
     bootstrap_servers: str = Field(default="", min_length=1)
     topic: str = Field(default="", min_length=1)
+    anonymous_topic: str = Field(default="", min_length=1)
     acks: str = "all"
     enable_idempotence: bool = True
     linger_ms: int = 5

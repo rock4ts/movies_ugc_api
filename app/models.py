@@ -30,6 +30,14 @@ class BaseUserEvent(BaseModel):
     timestamp: datetime = Field(..., description="Event timestamp in ISO-8601 format.")
 
 
+class BaseAnonymousEvent(BaseModel):
+    """Common envelope for incoming anonymous activity events."""
+
+    event_id: UUID = Field(..., description="Unique event identifier.")
+    anonymous_id: UUID = Field(..., description="Client-generated anonymous identifier.")
+    timestamp: datetime = Field(..., description="Event timestamp in ISO-8601 format.")
+
+
 class ClickPayload(EventPayload):
     """Payload for a user click on an interface element."""
 
@@ -83,14 +91,25 @@ class SearchFilterUsedPayload(EventPayload):
     filters: dict[str, Any] = Field(..., description="Applied filters grouped by filter name.")
 
 
+EventPayloadUnion = (
+    ClickPayload
+    | PageViewPayload
+    | MovieQualityChangedPayload
+    | MovieCompletedPayload
+    | SearchFilterUsedPayload
+)
+
+
 class UserEvent(BaseUserEvent):
-    payload: (
-        ClickPayload
-        | PageViewPayload
-        | MovieQualityChangedPayload
-        | MovieCompletedPayload
-        | SearchFilterUsedPayload
-    ) = Field(
+    payload: EventPayloadUnion = Field(
+        ...,
+        description="Event-specific payload content; shape depends on event_type.",
+        discriminator="event_type",
+    )
+
+
+class AnonymousEvent(BaseAnonymousEvent):
+    payload: EventPayloadUnion = Field(
         ...,
         description="Event-specific payload content; shape depends on event_type.",
         discriminator="event_type",
