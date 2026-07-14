@@ -17,15 +17,15 @@ import pytest
 )
 def test_ingest_event_accepts_payload_and_publishes_to_kafka(
     event_type: str,
-    event_factory: Callable[[str], dict[str, Any]],
+    authenticated_event: Callable[[str], tuple[dict[str, Any], dict[str, str]]],
     post_event_and_consume: Callable[
-        [dict[str, Any]],
+        [dict[str, Any], dict[str, str] | None],
         tuple[dict[str, Any] | list[Any] | str, int, dict[str, Any]],
     ],
 ) -> None:
-    event_payload = event_factory(event_type)
+    event_payload, headers = authenticated_event(event_type)
 
-    body, status, kafka_message = post_event_and_consume(event_payload)
+    body, status, kafka_message = post_event_and_consume(event_payload, headers)
 
     assert status == HTTPStatus.ACCEPTED
     assert isinstance(body, dict)

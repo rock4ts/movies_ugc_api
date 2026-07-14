@@ -1,5 +1,6 @@
 """Application configuration module."""
 
+from functools import cached_property
 from typing import ClassVar, Literal
 
 from pydantic import Field
@@ -38,5 +39,18 @@ class KafkaSettings(BaseSettings):
     batch_size: int = 65536
 
 
+class JWTSettings(BaseSettings):
+    """Runtime JWT verification settings."""
+
+    algorithm: str = "RS256"
+    public_key_path: str = "certs/jwt-public.pem"
+
+    @cached_property
+    def public_key(self) -> bytes:
+        with open(self.public_key_path, "rb") as key_file:
+            return key_file.read()
+
+
 app_settings: AppSettings = AppSettings()
 kafka_settings: KafkaSettings = KafkaSettings()
+jwt_settings: JWTSettings = JWTSettings()

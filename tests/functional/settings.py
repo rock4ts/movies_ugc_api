@@ -14,4 +14,13 @@ class FunctionalTestSettings:
     kafka_wait_timeout_seconds: float = float(os.getenv("UGC_TEST_KAFKA_WAIT_TIMEOUT", "15"))
 
 
+@dataclass(frozen=True)
+class JWTTestSettings:
+    private_key_path: str = os.getenv(
+        "UGC_TEST_PRIVATE_KEY_PATH", "tests/docker/certs/jwt-private.pem"
+    )
+    jwt_algorithm: str = os.getenv("UGC_TEST_JWT_ALGORITHM", "RS256")
+
+
 test_settings = FunctionalTestSettings()
+jwt_test_settings = JWTTestSettings()

@@ -50,11 +50,15 @@ import pytest
 )
 def test_ingest_event_rejects_invalid_payload(
     event_payload: dict[str, Any],
+    make_access_token: Callable[..., str],
+    auth_headers: Callable[[str], dict[str, str]],
     make_post_request: Callable[
-        [str, dict[str, Any] | None], tuple[dict[str, Any] | list[Any] | str, int, Any]
+        [str, dict[str, Any] | None, dict[str, str] | None],
+        tuple[dict[str, Any] | list[Any] | str, int, Any],
     ],
 ) -> None:
-    body, status, _ = make_post_request("/events", event_payload)
+    token = make_access_token(user_id=event_payload["user_id"])
+    body, status, _ = make_post_request("/events", event_payload, auth_headers(token))
 
     assert status in {HTTPStatus.BAD_REQUEST, HTTPStatus.UNPROCESSABLE_ENTITY}
     assert isinstance(body, dict)
@@ -62,14 +66,18 @@ def test_ingest_event_rejects_invalid_payload(
 
 
 def test_ingest_event_rejects_malformed_json(
+    make_access_token: Callable[..., str],
+    auth_headers: Callable[[str], dict[str, str]],
     make_raw_post_request: Callable[
         [str, str, dict[str, str] | None], tuple[dict[str, Any] | list[Any] | str, int, Any]
     ],
 ) -> None:
+    token = make_access_token()
+    headers = {"Content-Type": "application/json", **auth_headers(token)}
     body, status, _ = make_raw_post_request(
         "/events",
         '{"payload":{"event_type":"click"},}',
-        {"Content-Type": "application/json"},
+        headers,
     )
 
     assert status == HTTPStatus.BAD_REQUEST

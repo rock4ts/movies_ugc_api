@@ -5,7 +5,7 @@ from typing import Any
 
 from flask import Flask, Response, jsonify, make_response
 from pydantic import ValidationError
-from werkzeug.exceptions import HTTPException
+from werkzeug.exceptions import Forbidden, HTTPException, Unauthorized
 
 from app.producer import KafkaPublishError
 
@@ -32,6 +32,18 @@ def register_error_handlers(app: Flask) -> None:
         if error.code == 400:
             LOGGER.warning("Invalid request JSON payload.", extra={"error": error.description})
         return {"error": error.description or "Request failed."}, error.code or 500
+
+    @app.errorhandler(Unauthorized)
+    def handle_unauthorized_error(error: Unauthorized) -> tuple[dict[str, Any], int, dict[str, str]]:
+        return (
+            {"error": error.description or "Unauthorized."},
+            401,
+            {"WWW-Authenticate": "Bearer"},
+        )
+
+    @app.errorhandler(Forbidden)
+    def handle_forbidden_error(error: Forbidden) -> tuple[dict[str, Any], int]:
+        return {"error": error.description or "Forbidden."}, 403
 
     @app.errorhandler(Exception)
     def handle_unexpected_exception(error: Exception) -> tuple[dict[str, Any], int]:

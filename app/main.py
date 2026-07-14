@@ -22,6 +22,13 @@ def create_app() -> OpenAPI:
     app = OpenAPI(
         __name__,
         info=Info(title="UGC API", version="1.0.0"),
+        security_schemes={
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
+        },
         validation_error_callback=validation_error_response,
     )
     app.config["ENV"] = app_settings.flask_env

@@ -10,6 +10,20 @@ Functional tests exercise the running API against a real Kafka broker. They POST
 
 - Docker and Docker Compose
 - Python 3.12+ with a virtual environment
+- JWT test key pair in `tests/docker/certs/`
+
+### Generate JWT test certificates
+
+Create a local RSA key pair used by functional tests:
+
+- `tests/docker/certs/jwt-private.pem` for minting test access tokens
+- `tests/docker/certs/jwt-public.pem` mounted into the API container for verification
+
+From `ugc_api/`:
+
+- `mkdir -p tests/docker/certs`
+- `openssl genrsa -out tests/docker/certs/jwt-private.pem 2048`
+- `openssl rsa -in tests/docker/certs/jwt-private.pem -pubout -out tests/docker/certs/jwt-public.pem`
 
 ### Run tests
 
@@ -52,6 +66,13 @@ tests/functional/
 - `search_filter_used`
 
 Each case verifies that `POST /api/v1/events` returns `202 Accepted` and that the event is published to Kafka with the user ID as the message key and the full payload in the value.
+
+**Authentication** (`test_auth.py`) — verifies the API:
+
+- rejects requests without an `Authorization` header (`401`)
+- rejects invalid or expired tokens (`401`)
+- rejects requests where `payload.user_id` does not match JWT `sub` (`403`)
+- accepts valid tokens with matching `user_id` (`202`)
 
 **Validation** (`test_validation.py`) — verifies the API rejects:
 

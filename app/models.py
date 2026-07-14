@@ -109,3 +109,17 @@ class ErrorResponse(BaseModel):
 
     error: str = Field(..., description="Human-readable error message.")
     details: Any | None = Field(default=None, description="Additional details about the error.")
+
+
+class AccessTokenPayload(BaseModel):
+    """Validated claims from an access JWT."""
+
+    type: Literal["access"]
+    is_superuser: bool
+    role: str | None = None
+    access_labels: list[str]
+    sub: UUID
+    iat: datetime
+    exp: datetime
+    jti: UUID
+    tv: int
