@@ -4,6 +4,7 @@ import atexit
 import logging
 
 from flask_openapi3.models.info import Info
+from flask_openapi3.models.server import Server
 from flask_openapi3.openapi import OpenAPI
 
 from app.config import app_settings, kafka_settings
@@ -19,9 +20,14 @@ def create_app() -> OpenAPI:
     """Create and configure the Flask OpenAPI application."""
     setup_logging(app_settings.debug)
 
+    servers = (
+        [Server(url=app_settings.public_url_prefix)] if app_settings.public_url_prefix else None
+    )
+
     app = OpenAPI(
         __name__,
         info=Info(title="UGC API", version="1.0.0"),
+        servers=servers,
         security_schemes={
             "bearerAuth": {
                 "type": "http",

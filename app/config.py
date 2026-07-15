@@ -18,6 +18,7 @@ class AppSettings(BaseSettings):
 
     flask_env: Literal["development", "production"] = "production"
     debug: bool = False
+    public_url_prefix: str = ""
 
 
 class KafkaSettings(BaseSettings):
