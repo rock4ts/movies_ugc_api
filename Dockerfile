@@ -13,4 +13,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
-CMD ["gunicorn", "-w 4", "--bind", "0.0.0.0:8000", "app.main:create_app()"]
+CMD ["gunicorn", "-w 4", "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-", "app.main:create_app()"]
